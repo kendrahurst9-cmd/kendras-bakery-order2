@@ -582,16 +582,28 @@ ${venmoFee ? "Venmo fee: $2.00\n" : ""}Total due: $${total.toFixed(2)}`;
   submitBtn.disabled = true;
   submitBtn.textContent = "Placing order...";
 
-  // Try to auto-notify via Formspree, if it's been configured
+  // Auto-notify via Formspree using their supported form-data format
+  let notified = false;
   if(!FORMSPREE_ENDPOINT.includes("YOUR_FORM_ID")){
     try{
-      await fetch(FORMSPREE_ENDPOINT, {
+      const fd = new FormData();
+      fd.append("name", name);
+      fd.append("phone", phone);
+      fd.append("fulfillment", fulfillment);
+      fd.append("requested_time", time ? new Date(time).toLocaleString() : "(not set)");
+      fd.append("payment", payment);
+      fd.append("total", "$" + total.toFixed(2));
+      fd.append("order_details", summary);
+      fd.append("_subject", `New bakery order from ${name} — $${total.toFixed(2)}`);
+
+      const res = await fetch(FORMSPREE_ENDPOINT, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Accept": "application/json" },
-        body: JSON.stringify({ name, phone, fulfillment, time, payment, total: total.toFixed(2), order: summary })
+        headers: { "Accept": "application/json" },
+        body: fd
       });
+      notified = res.ok;
+      if(!res.ok) console.error("Formspree responded with an error:", await res.text());
     }catch(err){
-      // Fails silently — the on-screen confirmation and mailto fallback still work
       console.error("Formspree notification failed:", err);
     }
   }
@@ -599,8 +611,9 @@ ${venmoFee ? "Venmo fee: $2.00\n" : ""}Total due: $${total.toFixed(2)}`;
   form.style.display = 'none';
   const confirmation = document.getElementById('confirmation');
   confirmation.style.display = 'block';
-  document.getElementById('confirmText').textContent =
-    `Thanks, ${name}! We've noted your order — total due is $${total.toFixed(2)} (${payment}). We'll see you at ${time ? new Date(time).toLocaleString() : "the requested time"}.`;
+  document.getElementById('confirmText').textContent = notified
+    ? `Thanks, ${name}! We've noted your order — total due is $${total.toFixed(2)} (${payment}). We'll see you at ${time ? new Date(time).toLocaleString() : "the requested time"}.`
+    : `Thanks, ${name}! Your order total is $${total.toFixed(2)} (${payment}). We couldn't confirm the automatic notification went through, so please tap the button below to email it to us directly.`;
 
   const mailBody = encodeURIComponent(summary);
   document.getElementById('mailtoBtn').onclick = () => {
