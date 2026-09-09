@@ -310,6 +310,95 @@
     text-decoration:underline;
     cursor:pointer;
   }
+
+  .group-btn{
+    display:block;
+    width:100%;
+    background:var(--pink-pale);
+    border:1px dashed var(--pink);
+    color:var(--pink);
+    font-family:'Inter',sans-serif;
+    font-weight:600;
+    font-size:13.5px;
+    padding:10px;
+    border-radius:12px;
+    cursor:pointer;
+    margin-bottom:18px;
+  }
+  .group-btn:hover{background:var(--pink-soft);}
+
+  .group-banner{
+    background:var(--pink-pale);
+    border:1px solid var(--pink-soft);
+    border-radius:12px;
+    padding:14px 16px;
+    margin-bottom:18px;
+    text-align:center;
+  }
+  .group-banner-label{
+    font-size:10.5px;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    color:var(--brown-soft);
+    margin-bottom:4px;
+  }
+  .group-code{
+    font-family:'Playfair Display',serif;
+    font-weight:700;
+    font-size:20px;
+    color:var(--pink);
+    letter-spacing:2px;
+    margin-bottom:10px;
+  }
+  .copy-link-btn{
+    background:#fff;
+    border:1px solid var(--pink);
+    color:var(--pink);
+    font-family:'Inter',sans-serif;
+    font-weight:600;
+    font-size:12.5px;
+    padding:7px 14px;
+    border-radius:16px;
+    cursor:pointer;
+  }
+  .copy-link-btn:hover{background:var(--pink-soft);}
+  .copy-link-btn.copied{background:var(--pink);color:#fff;}
+
+  .join-panel{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:18px 16px;
+    margin-bottom:18px;
+    text-align:center;
+  }
+  .join-panel p{
+    font-size:13px;
+    color:var(--brown-soft);
+    margin:0 0 10px;
+  }
+  .join-panel input{
+    width:100%;
+    background:var(--pink-pale);
+    border:1px solid var(--pink-soft);
+    color:var(--brown);
+    padding:9px 10px;
+    border-radius:8px;
+    font-family:'Inter',sans-serif;
+    font-size:14px;
+    margin-bottom:10px;
+  }
+
+  .participant-heading{
+    font-family:'Inter',sans-serif;
+    font-weight:700;
+    font-size:11.5px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    color:var(--pink);
+    margin:12px 0 2px;
+  }
+  .participant-heading:first-child{margin-top:0;}
 </style>
 </head>
 <body>
@@ -329,7 +418,21 @@
 
   <div class="ticket-wrap">
     <div class="ticket">
-      <h3>Your Order</h3>
+      <button type="button" class="group-btn" id="startGroupBtn">🎉 Start a Group Order</button>
+
+      <div class="group-banner" id="groupBanner" style="display:none;">
+        <div class="group-banner-label">Group Order</div>
+        <div class="group-code" id="groupCodeDisplay"></div>
+        <button type="button" class="copy-link-btn" id="copyLinkBtn">Copy invite link</button>
+      </div>
+
+      <div class="join-panel" id="joinPanel" style="display:none;">
+        <p>You're joining a group order! What's your name?</p>
+        <input type="text" id="joinNameInput" placeholder="Your name">
+        <button type="button" class="submit-btn" id="joinBtn" style="margin-top:0;">Join order</button>
+      </div>
+
+      <h3 id="ticketTitle">Your Order</h3>
       <div class="sub-h">Made with love, baked fresh for you</div>
 
       <div id="ticketItems"><div class="empty">Nothing in your order yet — tap + on any item.</div></div>
@@ -342,11 +445,11 @@
 
       <form id="orderForm">
         <div class="field">
-          <label for="custName">Name</label>
+          <label for="custName" id="custNameLabel">Name</label>
           <input type="text" id="custName" required>
         </div>
         <div class="field">
-          <label for="custPhone">Phone number</label>
+          <label for="custPhone" id="custPhoneLabel">Phone number</label>
           <input type="tel" id="custPhone" required>
         </div>
 
@@ -395,10 +498,33 @@
 
 </div>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
 <script>
-// ---- CONFIGURATION — edit these two lines ----
+// ---- CONFIGURATION — edit these lines ----
 const OWNER_EMAIL = "kendrahurst9@gmail.com";           // your real email, for the fallback mailto button
 const FORMSPREE_ENDPOINT = "https://formspree.io/f/meajddwg"; // Formspree endpoint for automatic order notifications
+
+// Group Order needs a free real-time database so everyone's phone can share one live cart.
+// Create a free Firebase project (see setup instructions), then paste your config object here:
+const firebaseConfig = {
+  apiKey: "AIzaSyCuEbPzL3qnQZSmz2K2CzVqV58PLcVAtSw",
+  authDomain: "kendras-bakery.firebaseapp.com",
+  databaseURL: "https://kendras-bakery-default-rtdb.firebaseio.com",
+  projectId: "kendras-bakery",
+  storageBucket: "kendras-bakery.firebasestorage.app",
+  messagingSenderId: "319582284231",
+  appId: "1:319582284231:web:9f8ab9cbea823abe4c11e2",
+  measurementId: "G-SN2KHFDJ7G"
+};
+let groupDb = null;
+try{
+  if(!firebaseConfig.apiKey.includes("YOUR_API_KEY")){
+    firebase.initializeApp(firebaseConfig);
+    groupDb = firebase.database();
+  }
+}catch(err){ console.error("Firebase init failed:", err); }
 // -----------------------------------------------
 
 const MENU = [
@@ -490,35 +616,99 @@ function allItems(){
   return MENU.flatMap(c => c.items);
 }
 
+// ---- Group Order state ----
+let groupMode = false;
+let groupId = null;
+let myKey = null;
+let myName = null;
+let groupData = null;
+let groupSubmitted = false;
+
+function isLocked(){ return groupMode && groupSubmitted; }
+
+function getMyParticipantId(){
+  let id = localStorage.getItem('bakeryParticipantId');
+  if(!id){
+    id = 'p' + Math.random().toString(36).slice(2,10);
+    localStorage.setItem('bakeryParticipantId', id);
+  }
+  return id;
+}
+function makeGroupCode(){
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for(let i=0;i<5;i++) code += chars[Math.floor(Math.random()*chars.length)];
+  return code;
+}
+function getGroupUrl(id){
+  const url = new URL(window.location.href);
+  url.search = '';
+  url.searchParams.set('group', id);
+  return url.toString();
+}
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
 menuCol.addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-id]');
-  if(!btn) return;
+  if(!btn || isLocked()) return;
   const id = btn.dataset.id;
-  if(btn.dataset.action === 'inc') qty[id]++;
-  else qty[id] = Math.max(0, qty[id]-1);
-  document.getElementById('qty-'+id).textContent = qty[id];
-  renderTicket();
+  let newQty = qty[id];
+  if(btn.dataset.action === 'inc') newQty++;
+  else newQty = Math.max(0, newQty - 1);
+
+  if(groupMode && groupDb && myKey){
+    groupDb.ref(`groups/${groupId}/participants/${myKey}/items/${id}`).set(newQty);
+    groupDb.ref(`groups/${groupId}/participants/${myKey}/name`).set(myName);
+    qty[id] = newQty;
+    document.getElementById('qty-'+id).textContent = newQty;
+  } else {
+    qty[id] = newQty;
+    document.getElementById('qty-'+id).textContent = newQty;
+    renderTicket();
+  }
 });
 
 const paymentRadios = document.querySelectorAll('input[name=payment]');
 const fulfillmentRadios = document.querySelectorAll('input[name=fulfillment]');
 
-function wirePills(radios, pillIds){
+function wirePills(radios, pillIds, groupField){
   radios.forEach(r => r.addEventListener('change', () => {
+    if(isLocked()) return;
     pillIds.forEach(pid => document.getElementById(pid).classList.remove('active'));
     const activeId = r.closest('.radio-pill').id;
     document.getElementById(activeId).classList.add('active');
-    renderTicket();
+    if(groupMode && groupDb){
+      groupDb.ref(`groups/${groupId}/${groupField}`).set(r.value);
+    } else {
+      renderTicket();
+    }
   }));
 }
-wirePills(paymentRadios, ['pillCash','pillVenmo']);
-wirePills(fulfillmentRadios, ['pillPickup','pillDropoff']);
+wirePills(paymentRadios, ['pillCash','pillVenmo'], 'payment');
+wirePills(fulfillmentRadios, ['pillPickup','pillDropoff'], 'fulfillment');
+
+['custTime','custName','custPhone'].forEach(fieldId => {
+  const fieldMap = { custTime: 'pickupTime', custName: 'contactName', custPhone: 'contactPhone' };
+  document.getElementById(fieldId).addEventListener('input', (e) => {
+    if(groupMode && groupDb && !isLocked()){
+      groupDb.ref(`groups/${groupId}/${fieldMap[fieldId]}`).set(e.target.value);
+    }
+  });
+});
 
 function getPayment(){
   return document.querySelector('input[name=payment]:checked').value;
 }
 
 function renderTicket(){
+  return groupMode ? renderGroupTicket() : renderSoloTicket();
+}
+
+function renderSoloTicket(){
   const ticketItems = document.getElementById('ticketItems');
   const items = allItems().filter(i => qty[i.id] > 0);
   let subtotal = 0;
@@ -543,6 +733,193 @@ function renderTicket(){
   return { items, subtotal, venmoFee, total };
 }
 
+function renderGroupTicket(){
+  const ticketItems = document.getElementById('ticketItems');
+  if(!groupData){
+    ticketItems.innerHTML = '<div class="empty">Loading group order…</div>';
+    return { subtotal: 0, venmoFee: 0, total: 0, participants: {} };
+  }
+
+  const participants = groupData.participants || {};
+  const itemsById = {};
+  allItems().forEach(i => itemsById[i.id] = i);
+
+  let html = '';
+  let grandSubtotal = 0;
+  let anyItems = false;
+
+  Object.keys(participants).forEach(pk => {
+    const p = participants[pk];
+    const pItems = p.items || {};
+    const lines = Object.keys(pItems).filter(id => pItems[id] > 0 && itemsById[id]);
+    if(lines.length === 0) return;
+    anyItems = true;
+    html += `<div class="participant-heading">${escapeHtml(p.name || 'Someone')}</div>`;
+    lines.forEach(id => {
+      const item = itemsById[id];
+      const q = pItems[id];
+      const lineTotal = item.price * q;
+      grandSubtotal += lineTotal;
+      html += `<div class="ticket-line"><span>${q}× ${item.name}</span><span>$${lineTotal.toFixed(2)}</span></div>`;
+    });
+  });
+
+  if(!anyItems){
+    ticketItems.innerHTML = '<div class="empty">No items yet — share the invite link so others can add their own!</div>';
+    document.getElementById('hr1').style.display = 'none';
+  } else {
+    ticketItems.innerHTML = html;
+    document.getElementById('hr1').style.display = 'block';
+  }
+
+  const payment = groupData.payment || 'Cash';
+  const venmoFee = payment === 'Venmo' ? 2 : 0;
+  document.getElementById('feeLine').style.display = venmoFee ? 'flex' : 'none';
+  const total = grandSubtotal + venmoFee;
+  document.getElementById('totalDisplay').textContent = '$' + total.toFixed(2);
+
+  const myItems = (participants[myKey] && participants[myKey].items) || {};
+  allItems().forEach(i => {
+    const el = document.getElementById('qty-'+i.id);
+    if(el) el.textContent = myItems[i.id] || 0;
+  });
+
+  syncSharedFieldsToForm();
+
+  return { subtotal: grandSubtotal, venmoFee, total, participants };
+}
+
+function syncSharedFieldsToForm(){
+  if(!groupData) return;
+  const timeEl = document.getElementById('custTime');
+  if(document.activeElement !== timeEl) timeEl.value = groupData.pickupTime || '';
+
+  const nameEl = document.getElementById('custName');
+  if(document.activeElement !== nameEl) nameEl.value = groupData.contactName || '';
+
+  const phoneEl = document.getElementById('custPhone');
+  if(document.activeElement !== phoneEl) phoneEl.value = groupData.contactPhone || '';
+
+  const payment = groupData.payment || 'Cash';
+  document.querySelectorAll('input[name=payment]').forEach(r => r.checked = (r.value === payment));
+  document.getElementById('pillCash').classList.toggle('active', payment === 'Cash');
+  document.getElementById('pillVenmo').classList.toggle('active', payment === 'Venmo');
+
+  const fulfillment = groupData.fulfillment || 'Pickup';
+  document.querySelectorAll('input[name=fulfillment]').forEach(r => r.checked = (r.value === fulfillment));
+  document.getElementById('pillPickup').classList.toggle('active', fulfillment === 'Pickup');
+  document.getElementById('pillDropoff').classList.toggle('active', fulfillment === 'Dropoff');
+}
+
+// ---- Group Order flow ----
+function startGroupOrder(){
+  if(!groupDb){
+    alert("Group Order needs a one-time free setup by the bakery owner first (a shared order database). Ask them to finish connecting it.");
+    return;
+  }
+  groupId = makeGroupCode();
+  groupDb.ref('groups/'+groupId).set({
+    createdAt: Date.now(),
+    fulfillment: 'Pickup',
+    pickupTime: '',
+    contactName: '',
+    contactPhone: '',
+    payment: 'Cash',
+    submitted: false,
+    participants: {}
+  });
+  const url = new URL(window.location.href);
+  url.searchParams.set('group', groupId);
+  window.history.replaceState({}, '', url);
+  enterGroupMode(groupId);
+}
+
+function enterGroupMode(id){
+  groupMode = true;
+  groupId = id;
+  myKey = getMyParticipantId();
+  document.getElementById('startGroupBtn').style.display = 'none';
+
+  const savedName = localStorage.getItem('bakeryName_'+id);
+  if(savedName){
+    myName = savedName;
+    showGroupBanner();
+    attachGroupListener();
+  } else {
+    document.getElementById('joinPanel').style.display = 'block';
+  }
+}
+
+function showGroupBanner(){
+  document.getElementById('groupBanner').style.display = 'block';
+  document.getElementById('groupCodeDisplay').textContent = groupId;
+  document.getElementById('joinPanel').style.display = 'none';
+  document.getElementById('ticketTitle').textContent = 'Group Order';
+  document.getElementById('custNameLabel').textContent = 'Group contact name';
+  document.getElementById('custPhoneLabel').textContent = 'Contact phone (for pickup)';
+  document.getElementById('submitBtn').textContent = 'Place Group Order';
+}
+
+function attachGroupListener(){
+  groupDb.ref('groups/'+groupId).on('value', snapshot => {
+    groupData = snapshot.val();
+    if(!groupData) return;
+    if(groupData.submitted && !groupSubmitted){
+      groupSubmitted = true;
+      showGroupConfirmation();
+    }
+    renderGroupTicket();
+  });
+}
+
+function showGroupConfirmation(){
+  document.getElementById('orderForm').style.display = 'none';
+  document.getElementById('startGroupBtn').style.display = 'none';
+  const confirmation = document.getElementById('confirmation');
+  confirmation.style.display = 'block';
+  document.getElementById('confirmText').textContent =
+    `This group order has been placed! No further items can be added — thanks for ordering together.`;
+  document.getElementById('mailtoBtn').style.display = 'none';
+}
+
+document.getElementById('startGroupBtn').addEventListener('click', startGroupOrder);
+
+document.getElementById('joinBtn').addEventListener('click', () => {
+  const nameInput = document.getElementById('joinNameInput');
+  const name = nameInput.value.trim();
+  if(!name){ nameInput.focus(); return; }
+  myName = name;
+  localStorage.setItem('bakeryName_'+groupId, name);
+  groupDb.ref(`groups/${groupId}/participants/${myKey}/name`).set(name);
+  showGroupBanner();
+  attachGroupListener();
+});
+
+document.getElementById('copyLinkBtn').addEventListener('click', () => {
+  const url = getGroupUrl(groupId);
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = document.getElementById('copyLinkBtn');
+    const original = btn.textContent;
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = original; btn.classList.remove('copied'); }, 2000);
+  });
+});
+
+(function initGroupFromUrl(){
+  const params = new URLSearchParams(window.location.search);
+  const gid = params.get('group');
+  if(!gid) return;
+  if(!groupDb){
+    const jp = document.getElementById('joinPanel');
+    jp.style.display = 'block';
+    jp.innerHTML = "<p>This group order link isn't active yet — ask the bakery to finish setting up group ordering.</p>";
+    document.getElementById('startGroupBtn').style.display = 'none';
+    return;
+  }
+  enterGroupMode(gid);
+})();
+
 renderTicket();
 
 // ---- Submission ----
@@ -551,6 +928,8 @@ const errorMsg = document.getElementById('errorMsg');
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
+  if(groupMode){ await submitGroupOrder(); return; }
+
   const { items, subtotal, venmoFee, total } = renderTicket();
 
   if(items.length === 0){
@@ -582,7 +961,6 @@ ${venmoFee ? "Venmo fee: $2.00\n" : ""}Total due: $${total.toFixed(2)}`;
   submitBtn.disabled = true;
   submitBtn.textContent = "Placing order...";
 
-  // Auto-notify via Formspree using their supported form-data format
   let notified = false;
   if(!FORMSPREE_ENDPOINT.includes("YOUR_FORM_ID")){
     try{
@@ -620,6 +998,95 @@ ${venmoFee ? "Venmo fee: $2.00\n" : ""}Total due: $${total.toFixed(2)}`;
     window.location.href = `mailto:${OWNER_EMAIL}?subject=${encodeURIComponent("New bakery order from " + name)}&body=${mailBody}`;
   };
 });
+
+async function submitGroupOrder(){
+  const { subtotal, venmoFee, total, participants } = renderGroupTicket();
+  const hasItems = participants && Object.values(participants).some(p => p.items && Object.values(p.items).some(q => q > 0));
+  if(!hasItems){
+    errorMsg.textContent = "No items have been added to this group order yet.";
+    errorMsg.style.display = 'block';
+    return;
+  }
+
+  const contactName = document.getElementById('custName').value.trim();
+  const contactPhone = document.getElementById('custPhone').value.trim();
+  const time = document.getElementById('custTime').value;
+  const fulfillment = groupData.fulfillment || 'Pickup';
+  const payment = groupData.payment || 'Cash';
+
+  if(!contactName || !contactPhone || !time){
+    errorMsg.textContent = "Please fill in the group contact name, phone, and pickup time before placing the order.";
+    errorMsg.style.display = 'block';
+    return;
+  }
+  errorMsg.style.display = 'none';
+
+  const itemsById = {};
+  allItems().forEach(i => itemsById[i.id] = i);
+
+  let breakdown = '';
+  Object.keys(participants).forEach(pk => {
+    const p = participants[pk];
+    const lines = Object.keys(p.items || {}).filter(id => p.items[id] > 0 && itemsById[id]);
+    if(lines.length === 0) return;
+    breakdown += `\n${p.name || 'Someone'}:\n`;
+    lines.forEach(id => {
+      const item = itemsById[id];
+      const q = p.items[id];
+      breakdown += `  ${q}× ${item.name} — $${(item.price*q).toFixed(2)}\n`;
+    });
+  });
+
+  const summary = `New GROUP order — code ${groupId}
+Group contact: ${contactName}
+Phone: ${contactPhone}
+${fulfillment} requested for: ${time ? new Date(time).toLocaleString() : "(not set)"}
+Payment: ${payment}${venmoFee ? " (+$2 fee)" : ""}
+${breakdown}
+Subtotal: $${subtotal.toFixed(2)}
+${venmoFee ? "Venmo fee: $2.00\n" : ""}Total due: $${total.toFixed(2)}`;
+
+  const submitBtn = document.getElementById('submitBtn');
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Placing group order...";
+
+  let notified = false;
+  if(!FORMSPREE_ENDPOINT.includes("YOUR_FORM_ID")){
+    try{
+      const fd = new FormData();
+      fd.append("group_code", groupId);
+      fd.append("contact_name", contactName);
+      fd.append("phone", contactPhone);
+      fd.append("fulfillment", fulfillment);
+      fd.append("requested_time", time ? new Date(time).toLocaleString() : "(not set)");
+      fd.append("payment", payment);
+      fd.append("total", "$" + total.toFixed(2));
+      fd.append("order_details", summary);
+      fd.append("_subject", `New GROUP bakery order (${groupId}) from ${contactName} — $${total.toFixed(2)}`);
+
+      const res = await fetch(FORMSPREE_ENDPOINT, {
+        method: "POST",
+        headers: { "Accept": "application/json" },
+        body: fd
+      });
+      notified = res.ok;
+      if(!res.ok) console.error("Formspree responded with an error:", await res.text());
+    }catch(err){
+      console.error("Formspree notification failed:", err);
+    }
+  }
+
+  await groupDb.ref(`groups/${groupId}/submitted`).set(true);
+
+  if(!notified){
+    const mailBody = encodeURIComponent(summary);
+    const mailtoBtn = document.getElementById('mailtoBtn');
+    mailtoBtn.style.display = 'inline-block';
+    mailtoBtn.onclick = () => {
+      window.location.href = `mailto:${OWNER_EMAIL}?subject=${encodeURIComponent("New GROUP bakery order " + groupId)}&body=${mailBody}`;
+    };
+  }
+}
 </script>
 
 </body>
