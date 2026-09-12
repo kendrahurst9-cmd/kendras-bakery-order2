@@ -1011,6 +1011,12 @@ ${venmoFee ? "Venmo fee: $2.00\n" : ""}Total due: $${total.toFixed(2)}`;
 });
 
 async function submitGroupOrder(){
+  if(!groupData){
+    errorMsg.textContent = "Still loading the group order — please wait a moment and try again.";
+    errorMsg.style.display = 'block';
+    return;
+  }
+
   const { subtotal, venmoFee, total, participants } = renderGroupTicket();
   const hasItems = participants && Object.values(participants).some(p => p.items && Object.values(p.items).some(q => q > 0));
   if(!hasItems){
@@ -1023,8 +1029,8 @@ async function submitGroupOrder(){
   const contactPhone = document.getElementById('custPhone').value.trim();
   const contactEmail = document.getElementById('custEmail').value.trim();
   const time = document.getElementById('custTime').value;
-  const fulfillment = groupData.fulfillment || 'Pickup';
-  const payment = groupData.payment || 'Cash';
+  const fulfillment = (groupData && groupData.fulfillment) || 'Pickup';
+  const payment = (groupData && groupData.payment) || 'Cash';
 
   if(!contactName || !contactPhone || !time){
     errorMsg.textContent = "Please fill in the group contact name, phone, and pickup time before placing the order.";
@@ -1033,23 +1039,26 @@ async function submitGroupOrder(){
   }
   errorMsg.style.display = 'none';
 
-  const itemsById = {};
-  allItems().forEach(i => itemsById[i.id] = i);
+  const submitBtn = document.getElementById('submitBtn');
 
-  let breakdown = '';
-  Object.keys(participants).forEach(pk => {
-    const p = participants[pk];
-    const lines = Object.keys(p.items || {}).filter(id => p.items[id] > 0 && itemsById[id]);
-    if(lines.length === 0) return;
-    breakdown += `\n${p.name || 'Someone'}:\n`;
-    lines.forEach(id => {
-      const item = itemsById[id];
-      const q = p.items[id];
-      breakdown += `  ${q}× ${item.name} — $${(item.price*q).toFixed(2)}\n`;
+  try{
+    const itemsById = {};
+    allItems().forEach(i => itemsById[i.id] = i);
+
+    let breakdown = '';
+    Object.keys(participants).forEach(pk => {
+      const p = participants[pk];
+      const lines = Object.keys(p.items || {}).filter(id => p.items[id] > 0 && itemsById[id]);
+      if(lines.length === 0) return;
+      breakdown += `\n${p.name || 'Someone'}:\n`;
+      lines.forEach(id => {
+        const item = itemsById[id];
+        const q = p.items[id];
+        breakdown += `  ${q}× ${item.name} — $${(item.price*q).toFixed(2)}\n`;
+      });
     });
-  });
 
-  const summary = `New GROUP order — code ${groupId}
+    const summary = `New GROUP order — code ${groupId}
 Group contact: ${contactName}
 Phone: ${contactPhone}
 ${fulfillment} requested for: ${time ? new Date(time).toLocaleString() : "(not set)"}
@@ -1058,48 +1067,55 @@ ${breakdown}
 Subtotal: $${subtotal.toFixed(2)}
 ${venmoFee ? "Venmo fee: $2.00\n" : ""}Total due: $${total.toFixed(2)}`;
 
-  const submitBtn = document.getElementById('submitBtn');
-  submitBtn.disabled = true;
-  submitBtn.textContent = "Placing group order...";
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Placing group order...";
 
-  let notified = false;
-  if(WEB3FORMS_ACCESS_KEY !== "YOUR_ACCESS_KEY"){
-    try{
-      const payload = {
-        access_key: WEB3FORMS_ACCESS_KEY,
-        subject: `New GROUP bakery order (${groupId}) from ${contactName} — $${total.toFixed(2)}`,
-        group_code: groupId,
-        contact_name: contactName,
-        phone: contactPhone,
-        email: contactEmail || "not provided",
-        fulfillment,
-        requested_time: time ? new Date(time).toLocaleString() : "(not set)",
-        payment,
-        total: "$" + total.toFixed(2),
-        order_details: summary
-      };
-      const res = await fetch("https://api.web3forms.com/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Accept": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      const result = await res.json();
-      notified = res.ok && result.success;
-      if(!notified) console.error("Web3Forms responded with an error:", result);
-    }catch(err){
-      console.error("Web3Forms notification failed:", err);
+    let notified = false;
+    if(WEB3FORMS_ACCESS_KEY !== "YOUR_ACCESS_KEY"){
+      try{
+        const payload = {
+          access_key: WEB3FORMS_ACCESS_KEY,
+          subject: `New GROUP bakery order (${groupId}) from ${contactName} — $${total.toFixed(2)}`,
+          name: contactName,
+          group_code: groupId,
+          contact_name: contactName,
+          phone: contactPhone,
+          email: contactEmail || "not provided",
+          fulfillment,
+          requested_time: time ? new Date(time).toLocaleString() : "(not set)",
+          payment,
+          total: "$" + total.toFixed(2),
+          order_details: summary
+        };
+        const res = await fetch("https://api.web3forms.com/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const result = await res.json();
+        notified = res.ok && result.success;
+        if(!notified) console.error("Web3Forms responded with an error:", result);
+      }catch(err){
+        console.error("Web3Forms notification failed:", err);
+      }
     }
-  }
 
-  await groupDb.ref(`groups/${groupId}/submitted`).set(true);
+    await groupDb.ref(`groups/${groupId}/submitted`).set(true);
 
-  if(!notified){
-    const mailBody = encodeURIComponent(summary);
-    const mailtoBtn = document.getElementById('mailtoBtn');
-    mailtoBtn.style.display = 'inline-block';
-    mailtoBtn.onclick = () => {
-      window.location.href = `mailto:${OWNER_EMAIL}?subject=${encodeURIComponent("New GROUP bakery order " + groupId)}&body=${mailBody}`;
-    };
+    if(!notified){
+      const mailBody = encodeURIComponent(summary);
+      const mailtoBtn = document.getElementById('mailtoBtn');
+      mailtoBtn.style.display = 'inline-block';
+      mailtoBtn.onclick = () => {
+        window.location.href = `mailto:${OWNER_EMAIL}?subject=${encodeURIComponent("New GROUP bakery order " + groupId)}&body=${mailBody}`;
+      };
+    }
+  }catch(err){
+    console.error("Group order submission failed:", err);
+    errorMsg.textContent = "Something went wrong placing the order — please try again.";
+    errorMsg.style.display = 'block';
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Place Group Order";
   }
 }
 </script>
