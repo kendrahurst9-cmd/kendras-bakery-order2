@@ -452,6 +452,10 @@
           <label for="custPhone" id="custPhoneLabel">Phone number</label>
           <input type="tel" id="custPhone" required>
         </div>
+        <div class="field">
+          <label for="custEmail">Email (optional)</label>
+          <input type="text" id="custEmail" placeholder="for a receipt, if you'd like one">
+        </div>
 
         <div class="field">
           <label>Pickup or dropoff</label>
@@ -504,7 +508,7 @@
 <script>
 // ---- CONFIGURATION — edit these lines ----
 const OWNER_EMAIL = "kendrahurst9@gmail.com";           // your real email, for the fallback mailto button
-const FORMSPREE_ENDPOINT = "https://formspree.io/f/meajddwg"; // Formspree endpoint for automatic order notifications
+const WEB3FORMS_ACCESS_KEY = "4ed6000d-5cf6-494e-ac03-e369f08cf5d4"; // Web3Forms access key for automatic order notifications
 
 // Group Order needs a free real-time database so everyone's phone can share one live cart.
 // Create a free Firebase project (see setup instructions), then paste your config object here:
@@ -691,8 +695,8 @@ function wirePills(radios, pillIds, groupField){
 wirePills(paymentRadios, ['pillCash','pillVenmo'], 'payment');
 wirePills(fulfillmentRadios, ['pillPickup','pillDropoff'], 'fulfillment');
 
-['custTime','custName','custPhone'].forEach(fieldId => {
-  const fieldMap = { custTime: 'pickupTime', custName: 'contactName', custPhone: 'contactPhone' };
+['custTime','custName','custPhone','custEmail'].forEach(fieldId => {
+  const fieldMap = { custTime: 'pickupTime', custName: 'contactName', custPhone: 'contactPhone', custEmail: 'contactEmail' };
   document.getElementById(fieldId).addEventListener('input', (e) => {
     if(groupMode && groupDb && !isLocked()){
       groupDb.ref(`groups/${groupId}/${fieldMap[fieldId]}`).set(e.target.value);
@@ -799,6 +803,9 @@ function syncSharedFieldsToForm(){
 
   const phoneEl = document.getElementById('custPhone');
   if(document.activeElement !== phoneEl) phoneEl.value = groupData.contactPhone || '';
+
+  const emailEl = document.getElementById('custEmail');
+  if(document.activeElement !== emailEl) emailEl.value = groupData.contactEmail || '';
 
   const payment = groupData.payment || 'Cash';
   document.querySelectorAll('input[name=payment]').forEach(r => r.checked = (r.value === payment));
@@ -941,6 +948,7 @@ form.addEventListener('submit', async (e) => {
 
   const name = document.getElementById('custName').value.trim();
   const phone = document.getElementById('custPhone').value.trim();
+  const email = document.getElementById('custEmail').value.trim();
   const time = document.getElementById('custTime').value;
   const fulfillment = document.querySelector('input[name=fulfillment]:checked').value;
   const payment = getPayment();
@@ -962,27 +970,30 @@ ${venmoFee ? "Venmo fee: $2.00\n" : ""}Total due: $${total.toFixed(2)}`;
   submitBtn.textContent = "Placing order...";
 
   let notified = false;
-  if(!FORMSPREE_ENDPOINT.includes("YOUR_FORM_ID")){
+  if(WEB3FORMS_ACCESS_KEY !== "YOUR_ACCESS_KEY"){
     try{
-      const fd = new FormData();
-      fd.append("name", name);
-      fd.append("phone", phone);
-      fd.append("fulfillment", fulfillment);
-      fd.append("requested_time", time ? new Date(time).toLocaleString() : "(not set)");
-      fd.append("payment", payment);
-      fd.append("total", "$" + total.toFixed(2));
-      fd.append("order_details", summary);
-      fd.append("_subject", `New bakery order from ${name} — $${total.toFixed(2)}`);
-
-      const res = await fetch(FORMSPREE_ENDPOINT, {
+      const payload = {
+        access_key: WEB3FORMS_ACCESS_KEY,
+        subject: `New bakery order from ${name} — $${total.toFixed(2)}`,
+        name,
+        phone,
+        email: email || "not provided",
+        fulfillment,
+        requested_time: time ? new Date(time).toLocaleString() : "(not set)",
+        payment,
+        total: "$" + total.toFixed(2),
+        order_details: summary
+      };
+      const res = await fetch("https://api.web3forms.com/submit", {
         method: "POST",
-        headers: { "Accept": "application/json" },
-        body: fd
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify(payload)
       });
-      notified = res.ok;
-      if(!res.ok) console.error("Formspree responded with an error:", await res.text());
+      const result = await res.json();
+      notified = res.ok && result.success;
+      if(!notified) console.error("Web3Forms responded with an error:", result);
     }catch(err){
-      console.error("Formspree notification failed:", err);
+      console.error("Web3Forms notification failed:", err);
     }
   }
 
@@ -1010,6 +1021,7 @@ async function submitGroupOrder(){
 
   const contactName = document.getElementById('custName').value.trim();
   const contactPhone = document.getElementById('custPhone').value.trim();
+  const contactEmail = document.getElementById('custEmail').value.trim();
   const time = document.getElementById('custTime').value;
   const fulfillment = groupData.fulfillment || 'Pickup';
   const payment = groupData.payment || 'Cash';
@@ -1051,28 +1063,31 @@ ${venmoFee ? "Venmo fee: $2.00\n" : ""}Total due: $${total.toFixed(2)}`;
   submitBtn.textContent = "Placing group order...";
 
   let notified = false;
-  if(!FORMSPREE_ENDPOINT.includes("YOUR_FORM_ID")){
+  if(WEB3FORMS_ACCESS_KEY !== "YOUR_ACCESS_KEY"){
     try{
-      const fd = new FormData();
-      fd.append("group_code", groupId);
-      fd.append("contact_name", contactName);
-      fd.append("phone", contactPhone);
-      fd.append("fulfillment", fulfillment);
-      fd.append("requested_time", time ? new Date(time).toLocaleString() : "(not set)");
-      fd.append("payment", payment);
-      fd.append("total", "$" + total.toFixed(2));
-      fd.append("order_details", summary);
-      fd.append("_subject", `New GROUP bakery order (${groupId}) from ${contactName} — $${total.toFixed(2)}`);
-
-      const res = await fetch(FORMSPREE_ENDPOINT, {
+      const payload = {
+        access_key: WEB3FORMS_ACCESS_KEY,
+        subject: `New GROUP bakery order (${groupId}) from ${contactName} — $${total.toFixed(2)}`,
+        group_code: groupId,
+        contact_name: contactName,
+        phone: contactPhone,
+        email: contactEmail || "not provided",
+        fulfillment,
+        requested_time: time ? new Date(time).toLocaleString() : "(not set)",
+        payment,
+        total: "$" + total.toFixed(2),
+        order_details: summary
+      };
+      const res = await fetch("https://api.web3forms.com/submit", {
         method: "POST",
-        headers: { "Accept": "application/json" },
-        body: fd
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify(payload)
       });
-      notified = res.ok;
-      if(!res.ok) console.error("Formspree responded with an error:", await res.text());
+      const result = await res.json();
+      notified = res.ok && result.success;
+      if(!notified) console.error("Web3Forms responded with an error:", result);
     }catch(err){
-      console.error("Formspree notification failed:", err);
+      console.error("Web3Forms notification failed:", err);
     }
   }
 
