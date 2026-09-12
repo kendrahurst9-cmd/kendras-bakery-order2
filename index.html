@@ -1058,7 +1058,7 @@ async function submitGroupOrder(){
       });
     });
 
-    const summary = `New GROUP order — code ${groupId}
+    const summary = `This is a shared order placed by multiple people.
 Group contact: ${contactName}
 Phone: ${contactPhone}
 ${fulfillment} requested for: ${time ? new Date(time).toLocaleString() : "(not set)"}
@@ -1075,7 +1075,7 @@ ${venmoFee ? "Venmo fee: $2.00\n" : ""}Total due: $${total.toFixed(2)}`;
       try{
         const payload = {
           access_key: WEB3FORMS_ACCESS_KEY,
-          subject: `New GROUP bakery order (${groupId}) from ${contactName} — $${total.toFixed(2)}`,
+          subject: `New shared order from ${contactName} — $${total.toFixed(2)}`,
           name: contactName,
           group_code: groupId,
           contact_name: contactName,
@@ -1107,7 +1107,7 @@ ${venmoFee ? "Venmo fee: $2.00\n" : ""}Total due: $${total.toFixed(2)}`;
       const mailtoBtn = document.getElementById('mailtoBtn');
       mailtoBtn.style.display = 'inline-block';
       mailtoBtn.onclick = () => {
-        window.location.href = `mailto:${OWNER_EMAIL}?subject=${encodeURIComponent("New GROUP bakery order " + groupId)}&body=${mailBody}`;
+        window.location.href = `mailto:${OWNER_EMAIL}?subject=${encodeURIComponent("New shared bakery order (" + groupId + ")")}&body=${mailBody}`;
       };
     }
   }catch(err){
