@@ -408,9 +408,66 @@
     font-style:italic;
   }
 
+  .notice-overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(74,51,39,0.45);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:1000;
+    padding:20px;
+  }
+  .notice-overlay.show{display:flex;}
+  .notice-box{
+    background:var(--card);
+    border-radius:18px;
+    max-width:420px;
+    width:100%;
+    padding:30px 26px 26px;
+    text-align:center;
+    box-shadow:0 20px 50px rgba(74,51,39,0.3);
+  }
+  .notice-box .notice-icon{font-size:34px;margin-bottom:10px;}
+  .notice-box h4{
+    font-family:'Playball',cursive;
+    font-weight:400;
+    font-size:26px;
+    color:var(--pink);
+    margin:0 0 10px;
+  }
+  .notice-box p{
+    font-size:14px;
+    color:var(--brown-soft);
+    line-height:1.6;
+    margin:0 0 20px;
+  }
+  .notice-box p strong{color:var(--brown);}
+  .notice-close-btn{
+    background:var(--pink);
+    color:#fff;
+    border:none;
+    padding:11px 26px;
+    border-radius:24px;
+    font-family:'Inter',sans-serif;
+    font-weight:600;
+    font-size:13.5px;
+    cursor:pointer;
+  }
+  .notice-close-btn:hover{background:#b94d6f;}
+
 </style>
 </head>
 <body>
+
+<div class="notice-overlay" id="noticeOverlay">
+  <div class="notice-box">
+    <div class="notice-icon">🧁</div>
+    <h4>I'm on vacation!</h4>
+    <p>I am on vacation and cannot accept orders at this time. Pickup/dropoff is unavailable from <strong>November 28th through December 16th, 2026</strong>. Please choose a date on or after <strong>December 17th, 2026</strong>. Thank you so much for understanding!</p>
+    <button type="button" class="notice-close-btn" id="noticeCloseBtn">Got it!</button>
+  </div>
+</div>
 
 
 <header>
@@ -678,15 +735,34 @@ function getEarliestDate(){
     if(day !== 0 && day !== 6) added++;
   }
   const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T00:00`;
+  let result = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T00:00`;
+  // If the earliest date lands inside the vacation window, bump it to the first open day
+  if(isBlockedDate(result)) result = BLACKOUT_REOPEN + "T00:00";
+  return result;
 }
+
+// ---- Vacation blackout: no pickup/dropoff Nov 28 – Dec 16, 2026 (inclusive) ----
+const BLACKOUT_START = "2026-11-28";
+const BLACKOUT_END = "2026-12-16";
+const BLACKOUT_REOPEN = "2026-12-17";
+function isBlockedDate(value){
+  if(!value) return false;
+  const day = value.slice(0,10);
+  return day >= BLACKOUT_START && day <= BLACKOUT_END;
+}
+function showVacationPopup(){
+  document.getElementById('noticeOverlay').classList.add('show');
+}
+document.getElementById('noticeCloseBtn').addEventListener('click', () => {
+  document.getElementById('noticeOverlay').classList.remove('show');
+});
 function earliestDateLabel(){
   const [y, m, day] = getEarliestDate().slice(0,10).split('-').map(Number);
   return new Date(y, m-1, day).toLocaleDateString(undefined, { weekday:'long', month:'long', day:'numeric' });
 }
 document.getElementById('custTime').min = getEarliestDate();
 document.getElementById('timeNote').textContent =
-  `Pickup/dropoff orders need at least 2 business days. Earliest available: ${earliestDateLabel()}.`;
+  `Pickup/dropoff orders need at least 2 business days. Earliest available: ${earliestDateLabel()}. Not available November 28 – December 16, 2026 (vacation).`;
 
 menuCol.addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-id]');
@@ -730,6 +806,10 @@ wirePills(fulfillmentRadios, ['pillPickup','pillDropoff'], 'fulfillment');
 ['custTime','custName','custPhone','custEmail'].forEach(fieldId => {
   const fieldMap = { custTime: 'pickupTime', custName: 'contactName', custPhone: 'contactPhone', custEmail: 'contactEmail' };
   document.getElementById(fieldId).addEventListener('input', (e) => {
+    if(fieldId === 'custTime' && isBlockedDate(e.target.value)){
+      e.target.value = '';
+      showVacationPopup();
+    }
     if(groupMode && groupDb && !isLocked()){
       groupDb.ref(`groups/${groupId}/${fieldMap[fieldId]}`).set(e.target.value);
     }
@@ -985,6 +1065,12 @@ form.addEventListener('submit', async (e) => {
   const fulfillment = document.querySelector('input[name=fulfillment]:checked').value;
   const payment = getPayment();
 
+  if(isBlockedDate(time)){
+    showVacationPopup();
+    errorMsg.textContent = "I'm on vacation November 28th – December 16th, 2026 and can't accept pickup/dropoff on those dates. Please choose a later date.";
+    errorMsg.style.display = 'block';
+    return;
+  }
   if(time && time < getEarliestDate()){
     errorMsg.textContent = `Pickup/dropoff orders need at least 2 business days. The earliest available date is ${earliestDateLabel()}.`;
     errorMsg.style.display = 'block';
@@ -1072,6 +1158,12 @@ async function submitGroupOrder(){
 
   if(!contactName || !contactPhone || !time){
     errorMsg.textContent = "Please fill in the group contact name, phone, and pickup time before placing the order.";
+    errorMsg.style.display = 'block';
+    return;
+  }
+  if(isBlockedDate(time)){
+    showVacationPopup();
+    errorMsg.textContent = "I'm on vacation November 28th – December 16th, 2026 and can't accept pickup/dropoff on those dates. Please choose a later date.";
     errorMsg.style.display = 'block';
     return;
   }
